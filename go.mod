@@ -1,4 +1,4 @@
-module github.com/secinto/simpleFinder
+module github.com/secinto/duplicateRemover
 
 go 1.20
 
