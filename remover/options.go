@@ -11,17 +11,20 @@ import (
 )
 
 var (
-	defaultConfigLocation = filepath.Join(folderutil.HomeDirOrDefault("."), ".config/simpleFinder/config.yaml")
+	defaultSettingsLocation = filepath.Join(folderutil.HomeDirOrDefault("."), ".config/duplicateRemover/settings.yaml")
 )
 
 type Options struct {
-	ConfigFile string
-	Project    string
-	BaseFolder string
-	Silent     bool
-	Version    bool
-	NoColor    bool
-	Verbose    bool
+	SettingsFile string
+	Project      string
+	BaseFolder   string
+	DNS          bool
+	Email        bool
+	Ports        bool
+	Silent       bool
+	Version      bool
+	NoColor      bool
+	Verbose      bool
 }
 
 // ParseOptions parses the command line flags provided by a user
@@ -29,14 +32,17 @@ func ParseOptions() *Options {
 	options := &Options{}
 	var err error
 	flagSet := goflags.NewFlagSet()
-	flagSet.SetDescription(`push data to the ELK stack from command line`)
+	flagSet.SetDescription(`get simple findings from the obtained information for the specified project`)
 
 	flagSet.CreateGroup("input", "Input",
 		flagSet.StringVarP(&options.Project, "project", "p", "", "project name for metadata addition"),
+		flagSet.BoolVar(&options.Email, "email", false, "identify Email security (MX, TXT, ...) for the specified project"),
+		flagSet.BoolVar(&options.DNS, "dns", false, "identify DNS resolutions for the specified project"),
+		flagSet.BoolVar(&options.Ports, "ports", false, "identify open ports for the specified project"),
 	)
 
 	flagSet.CreateGroup("config", "Config",
-		flagSet.StringVar(&options.ConfigFile, "config", defaultConfigLocation, "flag configuration file"),
+		flagSet.StringVar(&options.SettingsFile, "config", defaultSettingsLocation, "settings (Yaml) file location"),
 	)
 
 	flagSet.CreateGroup("debug", "Debug",

@@ -1,7 +1,0 @@
----
-#Project configuration
-s2s_path: "S://"
-#Files
-httpx_ips: "http_from.{project_name}.ips.output.json"
-httpx_domains: "http_from.{project_name}.domains.output.json"
-

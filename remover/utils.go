@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,24 +19,18 @@ var (
 		}}
 )
 
-func CreateDirectoryIfNotExists(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, 0o770)
-		if err != nil {
-			return err
-		}
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func RandStringRunes(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
-	return nil
-}
-
-func CreateOutputFromInput(input string) string {
-
-	output := strings.ReplaceAll(input, ".json", ".struct.json")
-	return output
+	return string(b)
 }
 
 func WriteToTextFileInProject(filename string, data string) {
-	writeFile, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	writeFile, err := os.Create(filename)
 	if err != nil {
 		log.Fatalf("failed creating file: %s", err)
 	}
@@ -56,15 +51,6 @@ func ConvertStringArrayToString(stringArray []string, separator string) string {
 	return justString
 }
 
-func CheckIfArrayContainsString(stringArray []string, stringToCheck string) bool {
-	for _, element := range stringArray {
-		if strings.Contains(element, stringToCheck) {
-			return true
-		}
-	}
-	return false
-}
-
 func ExtractDomainAndTldFromString(str string) string {
 
 	var domainTld string
@@ -73,10 +59,14 @@ func ExtractDomainAndTldFromString(str string) string {
 
 	if len(parts) < 2 {
 		log.Error("Invalid domain " + str)
+		domainTld = str
 	} else {
-		domainTld = parts[len(parts)-2] + "." + parts[len(parts)-1]
+		if len(parts) >= 3 && (parts[len(parts)-2] == "or" || parts[len(parts)-2] == "co" || parts[len(parts)-2] == "gv") {
+			domainTld = parts[len(parts)-3] + "." + parts[len(parts)-2] + "." + parts[len(parts)-1]
+		} else {
+			domainTld = parts[len(parts)-2] + "." + parts[len(parts)-1]
+		}
 	}
-	log.Info(domainTld)
 	return domainTld
 
 }
@@ -102,12 +92,6 @@ func ExistsInArray(slice []string, key string) bool {
 		}
 	}
 	return false
-}
-
-func BestHostMatch(check string, existing string) {
-	if strings.Contains(check, "www.") || strings.Contains(check, "main.") || strings.Contains(check, ".com") || strings.Contains(check, "t") {
-
-	}
 }
 
 func GetHost(str string) string {
