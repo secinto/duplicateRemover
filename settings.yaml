@@ -1,0 +1,11 @@
+---
+#Project configuration
+s2s_path: "S://"
+#Files
+httpx_ips: "http_from.ips.output.json"
+httpx_domains: "http_from.domains.output.json"
+httpx_clean: "http_from.clean.output.json"
+dpux: "dpux_clean.json"
+dnsmx: "dpux.{project_name}.output.json"
+ports_xml: "ports.{project_name}.output.xml"
+ports_simple: "unique_open_ports.json"
