@@ -48,8 +48,18 @@ This will display help for the tool. Here are all the switches it supports.
 
 ```console
 Usage:
-  ./duplicateRemover [flags]
+  duplicateRemover [flags]
 
 Flags:
-   -p                    project name which will be added as additional information to the data
-   -h                    host name which will be added as additional information to the data
+INPUT:
+   -p, -project string  project name for metadata addition
+
+CONFIG:
+   -config string  settings (Yaml) file location (default "/home/samareina/.config/duplicateRemover/settings.yaml")
+
+DEBUG:
+   -silent         show only results in output
+   -version        show version of the project
+   -v              show verbose output
+   -nc, -no-color  disable colors in output
+

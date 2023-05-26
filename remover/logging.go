@@ -24,7 +24,7 @@ func (l *logger) SayWithFields(msg string, fields map[string]interface{}) {
 
 func NewLogger() *logger {
 
-	logLevel := logrus.DebugLevel
+	logLevel := logrus.InfoLevel
 	log := logrus.New()
 	log.SetLevel(logLevel)
 

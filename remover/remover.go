@@ -1,10 +1,10 @@
 package remover
 
 import (
+	"github.com/antchfx/jsonquery"
 	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v3"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -16,53 +16,14 @@ var (
 	unwantedHosts = []string{"autodiscover", "sip", "lyncdiscover", "enterpriseenrollment"}
 )
 
-const VERSION = "0.1"
-
-type Config struct {
-	S2SPath          string `yaml:"s2s_path,omitempty"`
-	HttpxIpFile      string `yaml:"httpx_ips,omitempty"`
-	HttpxDomainsFile string `yaml:"httpx_domains,omitempty"`
-	HttpxAllFile     string `yaml:"httpx_all,omitempty"`
-}
-
-type Remover struct {
-	options *Options
-}
-
-type SimpleHTTPXEntry struct {
-	Host           string
-	BodyHash       string
-	Status         int
-	ContentLength  int
-	Lines          int
-	Words          int
-	Input          string
-	URL            string
-	Title          string
-	UseIfDuplicate bool `default:false`
-}
-
-type Duplicate struct {
-	Status        int
-	ContentLength int
-	Lines         int
-	Words         int
-}
+//-------------------------------------------
+//			Initialization methods
+//-------------------------------------------
 
 func NewRemover(options *Options) (*Remover, error) {
 	finder := &Remover{options: options}
 	finder.initialize(options.SettingsFile)
 	return finder, nil
-}
-
-func (p *Remover) Remove() error {
-	if p.options.Project != "" {
-		log.Infof("Verifying duplications of project %s", p.options.Project)
-		p.CleanDomains()
-	} else {
-		log.Info("No project specified. Exiting application")
-	}
-	return nil
 }
 
 func (p *Remover) initialize(configLocation string) {
@@ -74,8 +35,8 @@ func (p *Remover) initialize(configLocation string) {
 	if !strings.HasSuffix(p.options.BaseFolder, "/") {
 		p.options.BaseFolder = p.options.BaseFolder + "/"
 	}
-	appConfig.HttpxIpFile = strings.Replace(appConfig.HttpxIpFile, "{project_name}", p.options.Project, -1)
 	appConfig.HttpxDomainsFile = strings.Replace(appConfig.HttpxDomainsFile, "{project_name}", p.options.Project, -1)
+	appConfig.DpuxFile = strings.Replace(appConfig.DpuxFile, "{project_name}", p.options.Project, -1)
 }
 
 func loadConfigFrom(location string) Config {
@@ -85,12 +46,7 @@ func loadConfigFrom(location string) Config {
 
 	yamlFile, err = os.ReadFile(location)
 	if err != nil {
-		path, err := os.Getwd()
-		if err != nil {
-			log.Fatalf("yamlFile.Get err   #%v ", err)
-		}
-
-		yamlFile, err = os.ReadFile(path + "\\config.yaml")
+		yamlFile, err = os.ReadFile(defaultSettingsLocation)
 		if err != nil {
 			log.Fatalf("yamlFile.Get err   #%v ", err)
 		}
@@ -100,88 +56,84 @@ func loadConfigFrom(location string) Config {
 	if err != nil {
 		log.Fatalf("Unmarshal: %v", err)
 	}
+
+	if &config == nil {
+		config = Config{
+			S2SPath:          "S://",
+			HttpxDomainsFile: "http_from.domains.output.json",
+			DpuxFile:         "dpux.{project_name}.output.json",
+			DpuxIPFile:       "dpux.txt",
+		}
+	}
 	return config
+
+	err = yaml.Unmarshal(yamlFile, &config)
+	if err != nil {
+		log.Fatalf("Unmarshal: %v", err)
+	}
+	return config
+}
+
+//-------------------------------------------
+//			Main functions methods
+//-------------------------------------------
+
+func (p *Remover) Remove() error {
+	if p.options.Project != "" {
+		log.Infof("Verifying duplications of project %s", p.options.Project)
+		p.CleanDomains()
+	} else {
+		log.Info("No project specified. Exiting application")
+	}
+	return nil
 }
 
 func (p *Remover) CleanDomains() {
 	// Get JSON file
-	inputFile := p.options.BaseFolder + "recon/" + appConfig.HttpxDomainsFile
-	log.Infof("Using input %s", inputFile)
-	input := GetDocumentFromFile(inputFile)
+	httpxInputFile := p.options.BaseFolder + "recon/" + appConfig.HttpxDomainsFile
+	log.Infof("Using HTTPX domains input %s", httpxInputFile)
+	httpxInput := GetDocumentFromFile(httpxInputFile)
+
+	ipsInputFile := p.options.BaseFolder + "recon/" + appConfig.DpuxIPFile
+	log.Infof("Using DPUx input %s", ipsInputFile)
+	ipsInput := ReadTxtFileLines(ipsInputFile)
+
+	dpuxInputFile := p.options.BaseFolder + "recon/" + appConfig.DpuxFile
+	log.Infof("Using DPUx input %s", dpuxInputFile)
+	dpuxInput := GetDocumentFromFile(dpuxInputFile)
+
 	var cleanedDomains []string
 
-	// Get IPs and amount of entries for that IP
-	hosts := GetHostCounts(input)
-	log.Infof("Found %d entries responsive hosts", len(hosts))
+	// Get Hosts from DPUX, since not every host must have HTTP services enabled, they would not be found in
 
-	// Create an array with all IPs
-	keys := make([]string, 0, len(hosts))
-	for key := range hosts {
-		keys = append(keys, key)
-	}
+	var nonDuplicateHosts []string
 
-	// Sort the IPs array based on the amount of entries descending.
-	sort.SliceStable(keys, func(i, j int) bool {
-		return hosts[keys[i]] > hosts[keys[j]]
-	})
-
-	var nonDuplicateHosts []SimpleHTTPXEntry
 	// Iterate over all hosts and resolve duplicates. Use the IP as selector.
-	for _, host := range keys {
-		if hosts[host] > 0 {
-			log.Infof("Identifying duplicate hosts for IP %s", host)
-			duplicates := GetSimpleEntryForHost(input, host)
-			cleanAfterHash := make(map[string]SimpleHTTPXEntry)
-			// Finding duplicates based on the hash values for the same IP.
-			for _, duplicate := range duplicates {
-				log.Debugf("Checking hostname %s", duplicate.Input)
-				if _, ok := cleanAfterHash[duplicate.BodyHash]; !ok {
-					// TLD other than the project domain are added to cleanAfterHash. If the project TLD is found
-					// it is returned as best match and must be added manually. If another subdomain is found instead
-					// of the project domain (not in the list) it is also returned as best match and must be added.
-					// If no best match is found the current hostname is added (should only be the case when?)
-					bestMatch := getBestDuplicateMatch(duplicates, duplicate.BodyHash, p.options.Project, cleanAfterHash)
-					if (bestMatch != SimpleHTTPXEntry{}) {
-						cleanAfterHash[duplicate.BodyHash] = bestMatch
-					} else {
-						cleanAfterHash[duplicate.BodyHash] = duplicate
-					}
-				}
-			}
-			// Also find duplicates based on the words and lines from the HTTP response. If they are the same
-			// for the same IP it is very likely that the content is the same although some minor thing changed
-			// and therefore the hash changed. (Used IP, hostname or some other changes such as generated Javascript)
-			// See austria-beteiligungen (hvw-wegraz.at), jaw.or.at for reasons.
-			cleanAfterWordsAndLines := make(map[string]SimpleHTTPXEntry)
-
-			for _, duplicate := range cleanAfterHash {
-				log.Debugf("Checking hostname %s", duplicate.Input)
-				if _, ok := cleanAfterWordsAndLines[strconv.Itoa(duplicate.Words)+"-"+strconv.Itoa(duplicate.Lines)]; !ok {
-					possibleDupes := getSimpleEntriesForWordsAndLines(cleanAfterHash, duplicate.Words, duplicate.Lines)
-					bestMatch := getBestWordLinesMatch(possibleDupes, p.options.Project, cleanAfterWordsAndLines)
-					if (bestMatch != SimpleHTTPXEntry{}) {
-						// Use the best match
-						cleanAfterWordsAndLines[strconv.Itoa(duplicate.Words)+"-"+strconv.Itoa(duplicate.Lines)] = bestMatch
-					} else {
-						// If empty, meaning no best match found, use the current one.
-						cleanAfterWordsAndLines[strconv.Itoa(duplicate.Words)+"-"+strconv.Itoa(duplicate.Lines)] = duplicate
-					}
-				}
-			}
-			// Add the filtered list to nonduplicate ones.
-			for _, duplicate := range cleanAfterWordsAndLines {
+	for _, host := range ipsInput {
+		log.Infof("Identifying duplicate hosts for IP %s", host)
+		cleanedHosts := p.filterDuplicates(httpxInput, host)
+		if len(cleanedHosts) > 0 {
+			for _, duplicate := range cleanedHosts {
 				log.Debugf("Adding hostname %s to non duplicates", duplicate.Input)
-				nonDuplicateHosts = append(nonDuplicateHosts, duplicate)
+				nonDuplicateHosts = append(nonDuplicateHosts, duplicate.Input)
 			}
-
+		} else {
+			dnsEntry := GetSimpleDNSEntryForHost(dpuxInput, host)
+			if dnsEntry.Host != "" {
+				log.Debugf("Adding hostname %s to non duplicates", dnsEntry.Host)
+				nonDuplicateHosts = append(nonDuplicateHosts, dnsEntry.Host)
+			}
 		}
 	}
 
 	for _, host := range nonDuplicateHosts {
-		if !checkIfHostStringIsContained(host.Input, unwantedHosts, "") {
-			cleanedDomains = AppendIfMissing(cleanedDomains, host.Input)
+		if strings.Contains(host, ":") {
+			host = strings.Split(host, ":")[0]
+		}
+		if !checkIfHostStringIsContained(host, unwantedHosts, "") {
+			cleanedDomains = AppendIfMissing(cleanedDomains, host)
 		} else {
-			log.Infof("Not using host %s", host.Input)
+			log.Infof("Not using host %s", host)
 		}
 	}
 
@@ -190,6 +142,54 @@ func (p *Remover) CleanDomains() {
 	cleanedDomainsString := ConvertStringArrayToString(cleanedDomains, "\n")
 	WriteToTextFileInProject(p.options.BaseFolder+"domains_clean.txt", cleanedDomainsString)
 	log.Info("Created cleaned domains file for project")
+
+}
+
+//-------------------------------------------
+//			Helper methods
+//-------------------------------------------
+
+func (p *Remover) filterDuplicates(httpxInput *jsonquery.Node, host string) map[string]SimpleHTTPXEntry {
+	duplicates := GetSimpleHostEntryForHost(httpxInput, host)
+	cleanAfterHash := make(map[string]SimpleHTTPXEntry)
+	// Finding duplicates based on the hash values for the same IP.
+	for _, duplicate := range duplicates {
+		log.Debugf("Checking hostname %s", duplicate.Input)
+		if _, ok := cleanAfterHash[duplicate.BodyHash]; !ok {
+			// TLD other than the project domain are added to cleanAfterHash. If the project TLD is found
+			// it is returned as best match and must be added manually. If another subdomain is found instead
+			// of the project domain (not in the list) it is also returned as best match and must be added.
+			// If no best match is found the current hostname is added (should only be the case when?)
+			bestMatch := getBestDuplicateMatch(duplicates, duplicate.BodyHash, p.options.Project, cleanAfterHash)
+			if (bestMatch != SimpleHTTPXEntry{}) {
+				cleanAfterHash[duplicate.BodyHash] = bestMatch
+			} else {
+				cleanAfterHash[duplicate.BodyHash] = duplicate
+			}
+		}
+	}
+	// Also find duplicates based on the words and lines from the HTTP response. If they are the same
+	// for the same IP it is very likely that the content is the same although some minor thing changed
+	// and therefore the hash changed. (Used IP, hostname or some other changes such as generated Javascript)
+	// See austria-beteiligungen (hvw-wegraz.at), jaw.or.at for reasons.
+	cleanAfterWordsAndLines := make(map[string]SimpleHTTPXEntry)
+
+	for _, duplicate := range cleanAfterHash {
+		log.Debugf("Checking hostname %s", duplicate.Input)
+		if _, ok := cleanAfterWordsAndLines[strconv.Itoa(duplicate.Words)+"-"+strconv.Itoa(duplicate.Lines)]; !ok {
+			possibleDupes := getSimpleEntriesForWordsAndLines(cleanAfterHash, duplicate.Words, duplicate.Lines)
+			bestMatch := getBestWordLinesMatch(possibleDupes, p.options.Project, cleanAfterWordsAndLines)
+			if (bestMatch != SimpleHTTPXEntry{}) {
+				// Use the best match
+				cleanAfterWordsAndLines[strconv.Itoa(duplicate.Words)+"-"+strconv.Itoa(duplicate.Lines)] = bestMatch
+			} else {
+				// If empty, meaning no best match found, use the current one.
+				cleanAfterWordsAndLines[strconv.Itoa(duplicate.Words)+"-"+strconv.Itoa(duplicate.Lines)] = duplicate
+			}
+		}
+	}
+	// Add the filtered list to nonduplicate ones.
+	return cleanAfterWordsAndLines
 
 }
 
@@ -210,10 +210,15 @@ func getBestDuplicateMatch(entries []SimpleHTTPXEntry, bodyHash string, project 
 					log.Debugf("Added non duplicate entry: %s", entry.Input)
 				}
 			}
-			if checkIfHostStringIsContained(entry.Input, wantedHosts, tld) && (possibleBestMatch == SimpleHTTPXEntry{}) {
-				possibleBestMatch = entry
+			if (possibleBestMatch == SimpleHTTPXEntry{}) {
+				if checkIfHostStringIsContained(entry.Input, wantedHosts, tld) {
+					possibleBestMatch = entry
+				} else {
+					match = entry
+				}
+			} else {
+				match = entry
 			}
-			match = entry
 		}
 	}
 
@@ -242,8 +247,12 @@ func getBestWordLinesMatch(entries []SimpleHTTPXEntry, project string, nonDupes 
 				log.Debugf("Added non duplicate entry: %s", entry.Input)
 			}
 		}
-		if checkIfHostStringIsContained(entry.Input, wantedHosts, tld) && (possibleBestMatch == SimpleHTTPXEntry{}) {
-			possibleBestMatch = entry
+		if (possibleBestMatch == SimpleHTTPXEntry{}) {
+			if checkIfHostStringIsContained(entry.Input, wantedHosts, tld) {
+				possibleBestMatch = entry
+			} else {
+				match = entry
+			}
 		} else {
 			match = entry
 		}
@@ -273,7 +282,7 @@ func checkIfHostStringIsContained(host string, hostSlice []string, tld string) b
 	parts := strings.Split(host, ".")
 	if tld != "" {
 		tldParts := strings.Split(tld, ".")
-		if len(parts) > 0 && (len(parts)+1 == len(tldParts)) {
+		if len(parts) > 0 && (len(parts) == len(tldParts)+1) {
 			if slices.Contains(hostSlice, parts[0]) {
 				return true
 			}

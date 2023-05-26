@@ -3,7 +3,6 @@ package remover
 import (
 	"bufio"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -79,6 +78,7 @@ func IsUrl(str string) bool {
 func AppendIfMissing(slice []string, key string) []string {
 	for _, element := range slice {
 		if element == key {
+			log.Debugf("%s already exists in the slice.", key)
 			return slice
 		}
 	}
@@ -94,7 +94,7 @@ func ExistsInArray(slice []string, key string) bool {
 	return false
 }
 
-func GetHost(str string) string {
+func GetHostURL(str string) string {
 	u, err := url.Parse(str)
 	if err != nil {
 		return str
@@ -102,7 +102,7 @@ func GetHost(str string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-func ConvertJSONtoJSONL(input string) string {
+func ConvertJSONLtoJSON(input string) string {
 
 	var data []byte
 	data = append(data, '[')
@@ -122,33 +122,6 @@ func ConvertJSONtoJSONL(input string) string {
 	}
 	data = append(data, ']')
 	return string(data)
-}
-
-func MergeIpsAndDomains(inputFile1 string, inputFile2 string, mergedFile string) {
-	// Read the contents of inputFile1 and inputFile2
-	content1, err := ioutil.ReadFile(inputFile1)
-	content2, err2 := ioutil.ReadFile(inputFile2)
-
-	var mergedContent []byte
-
-	if err == nil && err2 != nil {
-		mergedContent = content1
-	} else if err != nil && err2 == nil {
-		mergedContent = content2
-	} else if err != nil && err2 != nil {
-		// Combine the contents of inputFile1 and inputFile2
-		mergedContent = append(content1, content2...)
-		log.Println("Ip and Domains file merged successfully")
-	} else {
-		log.Fatal("Problem occured, cannot read: " + inputFile1 + " and " + inputFile2)
-	}
-
-	// Write the combined content to a new file
-	err = ioutil.WriteFile(mergedFile, mergedContent, 0644)
-	if err != nil {
-		log.Fatalln("Error writing merged file:", err)
-	}
-
 }
 
 func CheckIfFileExists(path string, stopRunning bool) bool {
@@ -186,13 +159,17 @@ func ReadTxtFileLines(path string) []string {
 		line = strings.TrimSuffix(line, "\r")
 		if err != nil {
 			if err == io.EOF {
-				lines = append(lines, line)
+				line = strings.TrimSpace(line)
+				if len(line) > 0 {
+					lines = append(lines, line) // GET the line string
+				}
 				break
 			}
 
 			log.Fatalf("read file line error: %v", err)
 			return []string{}
 		}
+		line = strings.TrimSpace(line)
 		if len(line) > 0 {
 			lines = append(lines, line) // GET the line string
 		}
@@ -200,39 +177,4 @@ func ReadTxtFileLines(path string) []string {
 	}
 
 	return lines
-}
-
-func CheckRequirements(files []string, stopRunning bool) bool {
-	for _, file := range files {
-		if CheckIfFileExists(file, stopRunning) == false {
-			return false
-		}
-	}
-	return true
-}
-
-func GetFileName(url string, extension string, funcName string) string {
-	fileName := strings.ReplaceAll(url, "//", "")
-	fileName = strings.ReplaceAll(fileName, ".", "_")
-	fileName = strings.ReplaceAll(fileName, ":", "_")
-
-	if len(funcName) > 0 {
-		fileName = funcName + "_" + fileName
-	}
-
-	return fileName + extension
-}
-
-func getDomainFromString(str string) string {
-	var domain string
-
-	parts := strings.Split(str, ".")
-
-	if len(parts) < 2 {
-		log.Error("Invalid domain " + str)
-	} else {
-		domain = parts[0]
-	}
-	log.Info(domain)
-	return domain
 }
