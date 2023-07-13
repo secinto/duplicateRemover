@@ -95,7 +95,7 @@ func (p *Remover) CleanDomains() {
 	httpxInput := GetDocumentFromFile(httpxInputFile)
 
 	ipsInputFile := p.options.BaseFolder + "recon/" + appConfig.DpuxIPFile
-	log.Infof("Using DPUx input %s", ipsInputFile)
+	log.Infof("Using DPUx IP input %s", ipsInputFile)
 	ipsInput := ReadTxtFileLines(ipsInputFile)
 
 	dpuxInputFile := p.options.BaseFolder + "recon/" + appConfig.DpuxFile
@@ -109,8 +109,10 @@ func (p *Remover) CleanDomains() {
 	var nonDuplicateHosts []string
 
 	// Iterate over all hosts and resolve duplicates. Use the IP as selector.
+	// All identified IP addresses as resolved from DPUX are used.
+	// TODO: If the IP has no HTTPs service listening currently it is not added.
 	for _, host := range ipsInput {
-		log.Infof("Identifying duplicate hosts for IP %s", host)
+		log.Infof("Identifying duplicate hosts for IP %s from HTTP responses", host)
 		cleanedHosts := p.filterDuplicates(httpxInput, host)
 		if len(cleanedHosts) > 0 {
 			for _, duplicate := range cleanedHosts {
