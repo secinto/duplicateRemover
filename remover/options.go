@@ -32,7 +32,7 @@ func ParseOptions() *Options {
 	options := &Options{}
 	var err error
 	flagSet := goflags.NewFlagSet()
-	flagSet.SetDescription(`get simple findings from the obtained information for the specified project`)
+	flagSet.SetDescription(fmt.Sprintf("duplicateRemover %s - Remove entries from subdomain enumeration which are duplicates", VERSION))
 
 	flagSet.CreateGroup("input", "Input",
 		flagSet.StringVarP(&options.Project, "project", "p", "", "project name for metadata addition"),
