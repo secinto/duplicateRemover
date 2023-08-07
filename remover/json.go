@@ -39,12 +39,19 @@ func GetSimpleHostEntryForHost(document *jsonquery.Node, host string) []SimpleHT
 
 func GetSimpleDNSEntryForHost(document *jsonquery.Node, host string) SimpleDNSXEntry {
 	entriesForHost, error := jsonquery.Query(document, "//*/a[contains(.,'"+host+"')]")
+
+	entry := SimpleDNSXEntry{}
+
 	if error != nil {
 		log.Errorf("Querying JSON error   #%v ", error)
+	} else {
+		if entriesForHost != nil && entriesForHost.Parent != nil {
+			log.Debugf("Entries for host %s are # %d", host, entriesForHost.Type)
+			entry = CreateSimpleDNSEntryFromDPUX(entriesForHost.Parent)
+		} else {
+			log.Errorf("Provided entries for host %s doesn't have a parent", host)
+		}
 	}
-
-	entry := CreateSimpleDNSEntryFromDPUX(entriesForHost.Parent)
-
 	return entry
 }
 
