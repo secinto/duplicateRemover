@@ -1,6 +1,6 @@
 package remover
 
-const VERSION = "0.2"
+const VERSION = "0.2.1"
 
 type Config struct {
 	S2SPath          string `yaml:"s2s_path,omitempty"`
