@@ -65,7 +65,6 @@ func loadConfigFrom(location string) Config {
 			DpuxIPFile:       "dpux.txt",
 		}
 	}
-	return config
 
 	err = yaml.Unmarshal(yamlFile, &config)
 	if err != nil {
@@ -103,6 +102,7 @@ func (p *Remover) CleanDomains() {
 	dpuxInput := GetDocumentFromFile(dpuxInputFile)
 
 	var cleanedDomains []string
+	var cleanedDomainsWithPorts []string
 
 	// Get Hosts from DPUX, since not every host must have HTTP services enabled, they would not be found in
 
@@ -129,6 +129,7 @@ func (p *Remover) CleanDomains() {
 	}
 
 	for _, host := range nonDuplicateHosts {
+		cleanedDomainsWithPorts = AppendIfMissing(cleanedDomainsWithPorts, host)
 		if strings.Contains(host, ":") {
 			host = strings.Split(host, ":")[0]
 		}
@@ -139,10 +140,14 @@ func (p *Remover) CleanDomains() {
 		}
 	}
 
-	log.Infof("Found %d non duplicate hosts", len(cleanedDomains))
-
+	log.Infof("Found %d non duplicate hosts without port", len(cleanedDomains))
 	cleanedDomainsString := ConvertStringArrayToString(cleanedDomains, "\n")
 	WriteToTextFileInProject(p.options.BaseFolder+"domains_clean.txt", cleanedDomainsString)
+
+	log.Infof("Found %d non duplicate hosts with port", len(cleanedDomainsWithPorts))
+	cleanedDomainsWithPortsString := ConvertStringArrayToString(cleanedDomainsWithPorts, "\n")
+	WriteToTextFileInProject(p.options.BaseFolder+"domains_clean_with_http_ports.txt", cleanedDomainsWithPortsString)
+
 	log.Info("Created cleaned domains file for project")
 
 }
