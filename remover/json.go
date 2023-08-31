@@ -21,9 +21,9 @@ func GetDocumentFromFile(filename string) *jsonquery.Node {
 	return input
 }
 
-func GetSimpleHostEntryForHost(document *jsonquery.Node, host string) []SimpleHTTPXEntry {
+func GetSimpleHostEntryForIPAddress(document *jsonquery.Node, ipaddress string) []SimpleHTTPXEntry {
 	var entries []SimpleHTTPXEntry
-	entriesForHost, error := jsonquery.QueryAll(document, "//*[host='"+host+"']")
+	entriesForHost, error := jsonquery.QueryAll(document, "//*[host='"+ipaddress+"']")
 	if error != nil {
 		log.Errorf("Querying JSON error   #%v ", error)
 	}

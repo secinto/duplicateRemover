@@ -14,16 +14,15 @@ type Remover struct {
 }
 
 type SimpleHTTPXEntry struct {
-	Host           string
-	BodyHash       string
-	Status         int
-	ContentLength  int
-	Lines          int
-	Words          int
-	Input          string
-	URL            string
-	Title          string
-	UseIfDuplicate bool `default:false`
+	Host          string
+	BodyHash      string
+	Status        int
+	ContentLength int
+	Lines         int
+	Words         int
+	Input         string
+	URL           string
+	Title         string
 }
 
 type SimpleDNSXEntry struct {
@@ -33,9 +32,29 @@ type SimpleDNSXEntry struct {
 	WhoisInfo     string   `yaml:"whois,omitempty"`
 }
 
-type Duplicate struct {
-	Status        int
-	ContentLength int
-	Lines         int
-	Words         int
+type Duplicates struct {
+	Hostname       string
+	IP             string
+	URL            string
+	BodyHash       string
+	ContentLength  int
+	Lines          int
+	Words          int
+	Status         int
+	DuplicateHosts []string
+}
+
+func getDuplicate(entry SimpleHTTPXEntry) Duplicates {
+	duplicate := Duplicates{
+		Hostname:       entry.Input,
+		IP:             entry.Host,
+		BodyHash:       entry.BodyHash,
+		ContentLength:  entry.ContentLength,
+		Lines:          entry.Lines,
+		Words:          entry.Words,
+		URL:            entry.URL,
+		Status:         entry.Status,
+		DuplicateHosts: []string{},
+	}
+	return duplicate
 }
