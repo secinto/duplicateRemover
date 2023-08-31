@@ -103,26 +103,37 @@ func (p *Remover) CleanDomains() {
 	log.Infof("Using DPUx input %s", dpuxInputFile)
 	dpuxInput := GetDocumentFromFile(dpuxInputFile)
 
-	// Get Hosts from DPUX, since not every host must have HTTP services enabled, they would not be found in
+	// Get Hosts from DPUX, since not every ipAddress must have HTTP services enabled, they would not be found in
 
 	var nonDuplicateHosts []string
 	var duplicateHosts []Duplicates
+	var dnsRecords []DNSRecord
 	// Iterate over all hosts and resolve duplicates. Use the IP as selector.
 	// All identified IP addresses as resolved from DPUX are used.
 	// TODO: If the IP has no HTTPs service listening currently it is not added.
-	for _, host := range ipsInput {
-		log.Infof("Identifying duplicate hosts for IP %s from HTTP responses", host)
-		cleanedHosts, duplicates := p.deduplicateByContent(httpxInput, host)
+	for _, ipAddress := range ipsInput {
+		log.Infof("Identifying duplicate hosts for IP %s from HTTP responses", ipAddress)
+		cleanedHosts, duplicates := p.deduplicateByContent(httpxInput, ipAddress)
 		if len(cleanedHosts) > 0 {
-			for _, duplicate := range cleanedHosts {
-				log.Debugf("Adding hostname %s to non duplicates", duplicate.Input)
-				nonDuplicateHosts = AppendIfMissing(nonDuplicateHosts, duplicate.Input)
+			for _, uniqueHost := range cleanedHosts {
+				log.Debugf("Adding hostname %s to non duplicates", uniqueHost.Input)
+				nonDuplicateHosts = AppendIfMissing(nonDuplicateHosts, uniqueHost.Input)
+				host, _ := getHostAndPort(uniqueHost.Input)
+				dnsEntry := GetDNSRecordForHostname(dpuxInput, host)
+				if dnsEntry.Host != "" {
+					dnsRecords = AppendDNSRecordIfMissing(dnsRecords, dnsEntry)
+				} else {
+					log.Debugf("Found DNS record with empty ipAddress during processing IP %s", ipAddress)
+				}
 			}
 		} else {
-			dnsEntry := GetSimpleDNSEntryForHost(dpuxInput, host)
+			dnsEntry := GetDNSRecordForIPAddress(dpuxInput, ipAddress)
 			if dnsEntry.Host != "" {
-				log.Debugf("Adding hostname %s to non duplicates for IP %s", dnsEntry.Host, host)
+				log.Debugf("Adding hostname %s to non duplicates for IP %s", dnsEntry.Host, ipAddress)
 				nonDuplicateHosts = AppendIfMissing(nonDuplicateHosts, dnsEntry.Host)
+				dnsRecords = AppendDNSRecordIfMissing(dnsRecords, dnsEntry)
+			} else {
+				log.Debugf("Found DNS record with empty ipAddress during processing IP %s", ipAddress)
 			}
 		}
 		for _, duplicateEntry := range duplicates {
@@ -145,7 +156,7 @@ func (p *Remover) CleanDomains() {
 
 			}
 		} else {
-			log.Infof("Not using host %s", host)
+			log.Infof("Not using ipAddress %s", host)
 		}
 	}
 
@@ -160,6 +171,9 @@ func (p *Remover) CleanDomains() {
 	data, _ := json.MarshalIndent(duplicateHosts, "", " ")
 	WriteToTextFileInProject(p.options.BaseFolder+"findings/duplicates.json", string(data))
 
+	data, _ = json.MarshalIndent(dnsRecords, "", " ")
+	WriteToTextFileInProject(p.options.BaseFolder+"findings/dns_clean.json", string(data))
+
 	log.Info("Created cleaned domains file for project")
 
 }
@@ -169,7 +183,7 @@ func (p *Remover) CleanDomains() {
 //-------------------------------------------
 
 func (p *Remover) deduplicateByContent(httpxInput *jsonquery.Node, ipaddress string) ([]SimpleHTTPXEntry, map[string]Duplicates) {
-	hostsOnSameIP := GetSimpleHostEntryForIPAddress(httpxInput, ipaddress)
+	hostsOnSameIP := GetHTTPXEntryForIPAddress(httpxInput, ipaddress)
 	cleanAfterHash := make(map[string]SimpleHTTPXEntry)
 	// TLDs are always used, even if they are duplicates
 	tlds := make(map[string]SimpleHTTPXEntry)
@@ -327,6 +341,10 @@ func getBestDuplicateMatch(entries []SimpleHTTPXEntry, project string, tlds map[
 				} else {
 					match = entry
 				}
+			}
+		} else {
+			if subDomainCount(possibleBestMatch.Input) > subDomainCount(entry.Input) {
+				possibleBestMatch = entry
 			}
 		}
 	}

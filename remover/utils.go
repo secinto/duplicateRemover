@@ -70,9 +70,9 @@ func ExtractDomainAndTldFromString(str string) string {
 
 }
 
-func IsUrl(str string) bool {
-	u, err := url.Parse(str)
-	return err == nil && u.Scheme != "" && u.Host != ""
+func subDomainCount(host string) int {
+	parts := strings.Split(host, ".")
+	return len(parts)
 }
 
 func getHostAndPort(input string) (string, string) {
@@ -92,6 +92,16 @@ func AppendDuplicatesIfMissing(slice []Duplicates, key Duplicates) []Duplicates 
 	for _, element := range slice {
 		if element.Hostname == key.Hostname {
 			log.Debugf("%s already exists in the slice.", key.Hostname)
+			return slice
+		}
+	}
+	return append(slice, key)
+}
+
+func AppendDNSRecordIfMissing(slice []DNSRecord, key DNSRecord) []DNSRecord {
+	for _, element := range slice {
+		if element.Host == key.Host {
+			log.Debugf("%s already exists in the slice.", key.Host)
 			return slice
 		}
 	}

@@ -21,7 +21,7 @@ func GetDocumentFromFile(filename string) *jsonquery.Node {
 	return input
 }
 
-func GetSimpleHostEntryForIPAddress(document *jsonquery.Node, ipaddress string) []SimpleHTTPXEntry {
+func GetHTTPXEntryForIPAddress(document *jsonquery.Node, ipaddress string) []SimpleHTTPXEntry {
 	var entries []SimpleHTTPXEntry
 	entriesForHost, error := jsonquery.QueryAll(document, "//*[host='"+ipaddress+"']")
 	if error != nil {
@@ -37,19 +37,37 @@ func GetSimpleHostEntryForIPAddress(document *jsonquery.Node, ipaddress string) 
 	return entries
 }
 
-func GetSimpleDNSEntryForHost(document *jsonquery.Node, host string) SimpleDNSXEntry {
-	entriesForHost, error := jsonquery.Query(document, "//*/a[contains(.,'"+host+"')]")
+func GetDNSRecordForIPAddress(document *jsonquery.Node, ipaddress string) DNSRecord {
+	entriesForHost, error := jsonquery.Query(document, "//*/a[contains(.,'"+ipaddress+"')]")
 
-	entry := SimpleDNSXEntry{}
+	entry := DNSRecord{}
 
 	if error != nil {
 		log.Errorf("Querying JSON error   #%v ", error)
 	} else {
-		if entriesForHost != nil && entriesForHost.Parent != nil {
-			log.Debugf("Entries for host %s are # %d", host, entriesForHost.Type)
+		if entriesForHost != nil {
+			log.Debugf("Entries for host %s are # %d", ipaddress, entriesForHost.Type)
 			entry = CreateSimpleDNSEntryFromDPUX(entriesForHost.Parent)
 		} else {
-			log.Errorf("Provided entries for host %s doesn't have a parent", host)
+			log.Errorf("Provided entries for host %s doesn't have a parent", ipaddress)
+		}
+	}
+	return entry
+}
+
+func GetDNSRecordForHostname(document *jsonquery.Node, hostname string) DNSRecord {
+	entriesForHost, error := jsonquery.Query(document, "//*[host='"+hostname+"']")
+
+	entry := DNSRecord{}
+
+	if error != nil {
+		log.Errorf("Querying JSON error   #%v ", error)
+	} else {
+		if entriesForHost != nil {
+			log.Debugf("Entries for host %s are # %d", hostname, entriesForHost.Type)
+			entry = CreateSimpleDNSEntryFromDPUX(entriesForHost)
+		} else {
+			log.Errorf("Provided entries for host %s doesn't have a parent", hostname)
 		}
 	}
 	return entry
@@ -90,8 +108,8 @@ func CreateSimpleHostEntryFromHTTPX(entryValues map[string]interface{}) SimpleHT
 	return entry
 }
 
-func CreateSimpleDNSEntryFromDPUX(record *jsonquery.Node) SimpleDNSXEntry {
-	var entry SimpleDNSXEntry
+func CreateSimpleDNSEntryFromDPUX(record *jsonquery.Node) DNSRecord {
+	var entry DNSRecord
 	if entryValues, ok := record.Value().(map[string]interface{}); ok {
 
 		var ip4Addresses []string
@@ -118,48 +136,13 @@ func CreateSimpleDNSEntryFromDPUX(record *jsonquery.Node) SimpleDNSXEntry {
 			ip6Addresses = append(ip6Addresses, entry)
 		}
 
-		entry = SimpleDNSXEntry{
+		entry = DNSRecord{
 			Host:          host,
 			IPv4Addresses: ip4Addresses,
 			IPv6Addresses: ip6Addresses,
 		}
 	} else {
-		entry = SimpleDNSXEntry{}
+		entry = DNSRecord{}
 	}
 	return entry
-}
-
-func GetHostCounts(document *jsonquery.Node) map[string]int {
-	entries, error := jsonquery.QueryAll(document, "//host")
-	if error != nil {
-		log.Errorf("Querying JSON error   #%v ", error)
-	}
-
-	hosts := make(map[string]int)
-
-	for _, entry := range entries {
-		if hostValue, ok := entry.Value().(string); ok {
-
-			if value, exists := hosts[hostValue]; exists {
-				hosts[hostValue] = value + 1
-			} else {
-				hosts[hostValue] = 1
-			}
-		}
-	}
-	return hosts
-}
-
-func GetAllRecordsForKey(document *jsonquery.Node, key string) []*jsonquery.Node {
-	return getAllNodesForKey(document, key)
-}
-
-func getAllNodesForKey(document *jsonquery.Node, key string) []*jsonquery.Node {
-	entries, error := jsonquery.QueryAll(document, "//*["+key+"]")
-
-	if error != nil {
-		log.Errorf("Querying JSON error   #%v ", error)
-	}
-
-	return entries
 }

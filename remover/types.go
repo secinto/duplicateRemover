@@ -1,6 +1,6 @@
 package remover
 
-const VERSION = "0.2.2"
+const VERSION = "0.2.3"
 
 type Config struct {
 	S2SPath          string `yaml:"s2s_path,omitempty"`
@@ -25,7 +25,7 @@ type SimpleHTTPXEntry struct {
 	Title         string
 }
 
-type SimpleDNSXEntry struct {
+type DNSRecord struct {
 	Host          string   `yaml:"host"`
 	IPv4Addresses []string `yaml:"ipv4"`
 	IPv6Addresses []string `yaml:"ipv6,omitempty"`
