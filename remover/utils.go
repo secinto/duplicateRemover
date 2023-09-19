@@ -142,6 +142,31 @@ func AppendSliceIfMissing(slice1 []string, slice2 []string) []string {
 	return append(slice1, slice3...)
 }
 
+func AppendSliceIfMissingExcept(slice1 []string, slice2 []string, except string) []string {
+	var slice3 []string
+	if len(slice1) == 0 {
+		return slice2
+	}
+	if len(slice2) == 0 {
+		return slice1
+	}
+
+	found := false
+	for _, element2 := range slice2 {
+		for _, element1 := range slice1 {
+			if element2 == element1 {
+				found = true
+				continue
+			}
+		}
+		if found == false && element2 != except {
+			slice3 = append(slice3, element2)
+		}
+		found = false
+	}
+	return append(slice1, slice3...)
+}
+
 func ExistsInArray(slice []string, key string) bool {
 	for _, element := range slice {
 		if element == key {

@@ -14,7 +14,7 @@ import (
 var (
 	log           = NewLogger()
 	appConfig     Config
-	wantedHosts   = []string{"www", "mail", "portal", "webmail", "dashboard", "login", "remote"}
+	wantedHosts   = []string{"www", "mail", "portal", "webmail", "dashboard", "login", "remote", "ssh"}
 	unwantedHosts = []string{"autodiscover", "sip", "lyncdiscover", "enterpriseenrollment", "enterpriseregistration", "_dmarc", "s1._domainkey"}
 )
 
@@ -110,7 +110,6 @@ func (p *Remover) CleanDomains() {
 	var dnsRecords []DNSRecord
 	// Iterate over all hosts and resolve duplicates. Use the IP as selector.
 	// All identified IP addresses as resolved from DPUX are used.
-	// TODO: If the IP has no HTTPs service listening currently it is not added.
 	for _, ipAddress := range ipsInput {
 		log.Infof("Identifying duplicate hosts for IP %s from HTTP responses", ipAddress)
 		cleanedHosts, duplicates := p.deduplicateByContent(httpxInput, ipAddress)
@@ -191,6 +190,7 @@ func (p *Remover) deduplicateByContent(httpxInput *jsonquery.Node, ipaddress str
 	cleanAfterWordsAndLines := make(map[string]SimpleHTTPXEntry)
 	if len(hostsOnSameIP) > 0 {
 		// Finding duplicates based on the hash values for the same IP.
+		log.Debugf("Checking duplicates for IP %s", ipaddress)
 		for _, hostEntry := range hostsOnSameIP {
 			log.Debugf("Checking hostname %s", hostEntry.Input)
 			if _, ok := cleanAfterHash[hostEntry.BodyHash]; !ok {
@@ -208,6 +208,9 @@ func (p *Remover) deduplicateByContent(httpxInput *jsonquery.Node, ipaddress str
 					}
 					// Create the base entry for the duplicates. All duplicates of the bodyHash are associated with this entry
 					duplicate := getDuplicate(cleanAfterHash[hostEntry.BodyHash])
+					if duplicate.Hostname != hostEntry.Input {
+						duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, hostEntry.Input)
+					}
 					duplicates[hostEntry.BodyHash] = duplicate
 				} else {
 					//Only one exists, use it
@@ -219,7 +222,9 @@ func (p *Remover) deduplicateByContent(httpxInput *jsonquery.Node, ipaddress str
 				if reflect.DeepEqual(Duplicates{}, duplicate) {
 					duplicate = getDuplicate(hostEntry)
 				}
-				duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, hostEntry.Input)
+				if duplicate.Hostname != hostEntry.Input {
+					duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, hostEntry.Input)
+				}
 				duplicates[hostEntry.BodyHash] = duplicate
 			}
 		}
@@ -245,14 +250,35 @@ func (p *Remover) deduplicateByContent(httpxInput *jsonquery.Node, ipaddress str
 						// Create the base entry for the duplicates. All duplicates of the words and lines are associated with this entry
 						duplicate := getDuplicate(cleanAfterWordsAndLines[key])
 						//If a duplicate for the body hash already exists, inline it to the new duplicates entry
-						if !reflect.DeepEqual(Duplicates{}, duplicates[cleanAfterWordsAndLines[key].BodyHash]) {
-							duplicate.DuplicateHosts = AppendSliceIfMissing(duplicate.DuplicateHosts, duplicates[duplicate.BodyHash].DuplicateHosts)
-							delete(duplicates, hostEntry.BodyHash)
+						if !reflect.DeepEqual(Duplicates{}, duplicates[duplicate.BodyHash]) {
+							if duplicate.Hostname != duplicates[duplicate.BodyHash].Hostname {
+								duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, duplicates[duplicate.BodyHash].Hostname)
+							}
+							duplicate.DuplicateHosts = AppendSliceIfMissingExcept(duplicate.DuplicateHosts, duplicates[duplicate.BodyHash].DuplicateHosts, duplicate.Hostname)
+							delete(duplicates, duplicate.BodyHash)
+						}
+						if duplicate.Hostname != hostEntry.Input {
+							duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, hostEntry.Input)
+							if !reflect.DeepEqual(Duplicates{}, duplicates[hostEntry.BodyHash]) {
+								duplicate.DuplicateHosts = AppendSliceIfMissingExcept(duplicate.DuplicateHosts, duplicates[hostEntry.BodyHash].DuplicateHosts, duplicate.Hostname)
+								delete(duplicates, hostEntry.BodyHash)
+							}
 						}
 						duplicates[key] = duplicate
 					} else {
 						//Only one entry exists, use it.
 						cleanAfterWordsAndLines[key] = hostEntry
+						// Create the base entry for the duplicates. All duplicates of the words and lines are associated with this entry
+						duplicate := getDuplicate(cleanAfterWordsAndLines[key])
+						//If a duplicate for the body hash already exists, inline it to the new duplicates entry
+						if !reflect.DeepEqual(Duplicates{}, duplicates[duplicate.BodyHash]) {
+							if duplicate.Hostname != duplicates[duplicate.BodyHash].Hostname {
+								duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, duplicates[duplicate.BodyHash].Hostname)
+							}
+							duplicate.DuplicateHosts = AppendSliceIfMissingExcept(duplicate.DuplicateHosts, duplicates[duplicate.BodyHash].DuplicateHosts, duplicate.Hostname)
+							delete(duplicates, hostEntry.BodyHash)
+						}
+						duplicates[key] = duplicate
 					}
 				} else {
 					// All other are duplicates
@@ -261,9 +287,15 @@ func (p *Remover) deduplicateByContent(httpxInput *jsonquery.Node, ipaddress str
 					if reflect.DeepEqual(Duplicates{}, duplicate) {
 						duplicate = getDuplicate(hostEntry)
 					}
+					if duplicate.Hostname != hostEntry.Input {
+						duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, hostEntry.Input)
+					}
 					//If a duplicate for the body hash already exists, inline it to the new duplicates entry
 					if !reflect.DeepEqual(Duplicates{}, duplicates[hostEntry.BodyHash]) {
-						duplicate.DuplicateHosts = AppendSliceIfMissing(duplicate.DuplicateHosts, duplicates[hostEntry.BodyHash].DuplicateHosts)
+						if duplicate.Hostname != duplicates[duplicate.BodyHash].Hostname {
+							duplicate.DuplicateHosts = AppendIfMissing(duplicate.DuplicateHosts, duplicates[hostEntry.BodyHash].Hostname)
+						}
+						duplicate.DuplicateHosts = AppendSliceIfMissingExcept(duplicate.DuplicateHosts, duplicates[hostEntry.BodyHash].DuplicateHosts, duplicate.Hostname)
 						delete(duplicates, hostEntry.BodyHash)
 					}
 					duplicates[key] = duplicate
@@ -320,31 +352,39 @@ func getBestDuplicateMatch(entries []SimpleHTTPXEntry, project string, tlds map[
 		// If not we use it as possible best match if it is an entry with port 443. If not we use it as general
 		if tld == host {
 			if tld == project {
-				currentBestMatch = entry
-			} else {
+				if (currentBestMatch != SimpleHTTPXEntry{}) {
+					cbmHost, _ := getHostAndPort(currentBestMatch.Input)
+					if _, ok := tlds[cbmHost]; !ok {
+						tlds[cbmHost] = currentBestMatch
+					}
+				}
 				if port == "443" {
-					possibleBestMatch = entry
+					currentBestMatch = entry
+				} else if (currentBestMatch == SimpleHTTPXEntry{}) {
+					currentBestMatch = entry
+				}
+
+			} else {
+				if port == "443" && (currentBestMatch == SimpleHTTPXEntry{}) {
+					currentBestMatch = entry
 				} else {
 					if _, ok := tlds[host]; !ok {
 						tlds[host] = entry
 					}
+					if (possibleBestMatch == SimpleHTTPXEntry{}) {
+						possibleBestMatch = entry
+					}
 				}
 				log.Debugf("Added non duplicate entry: %s", entry.Input)
 			}
-		}
-		if (possibleBestMatch == SimpleHTTPXEntry{}) {
+		} else if (match == SimpleHTTPXEntry{}) {
+			match = entry
+		} else if (match != SimpleHTTPXEntry{}) {
 			if checkIfHostStringIsContained(entry.Input, wantedHosts, tld) {
-				possibleBestMatch = entry
-			} else {
-				if port == "443" {
-					possibleBestMatch = entry
-				} else {
-					match = entry
-				}
+				match = entry
 			}
-		} else {
-			if subDomainCount(possibleBestMatch.Input) > subDomainCount(entry.Input) {
-				possibleBestMatch = entry
+			if subDomainCount(match.Input) > subDomainCount(entry.Input) {
+				match = entry
 			}
 		}
 	}
